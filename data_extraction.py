@@ -30,7 +30,7 @@ dan menyusun matriks jadual harian standard mengikut tahun dan stesen.
 """)
 
 # ============================================================
-# 3. FUNGSI-FUNGSI PEMPROSESAN (DARI KOD ASAL)
+# 3. FUNGSI-FUNGSI PEMPROSESAN
 # ============================================================
 months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
@@ -43,7 +43,7 @@ def find_header_row(raw):
     return None
 
 def clean_filename(name):
-    name = str(name).strip()
+    name = str(name).replace(":", "").strip()
     name = re.sub(r'[<>:"/\\|?*]', "_", name)
     name = re.sub(r"\s+", " ", name)
     name = name.strip(" .")
@@ -86,6 +86,12 @@ def get_station_info(raw):
             elif text.lower().startswith("elevation") and ":" in text:
                 elevation = text.split(":", 1)[1].strip()
                 
+    # Bersihkan tanda ':' pada data stesen
+    station = station.replace(":", "").strip()
+    latitude = latitude.replace(":", "").strip()
+    longitude = longitude.replace(":", "").strip()
+    elevation = elevation.replace(":", "").strip()
+    
     return station, latitude, longitude, elevation
 
 def read_station_sheet(excel_file, sheet):
@@ -136,13 +142,15 @@ def generate_styled_excel(station_name, station_info, all_data_list):
             monthly_max = valid_data.groupby("Month")["Rainfall"].max().reindex(range(1, 13))
             
             station, latitude, longitude, elevation = station_info
+            clean_station = station.replace(":", "").strip()
+            
             info_df = pd.DataFrame({
                 0: [
                     "JABATAN METEOROLOGI MALAYSIA",
                     "",
                     "DAILY RAINFALL RECORD IN MILLIMETRES",
                     "",
-                    f"STATION  : {station}",
+                    f"STATION  : {clean_station}",
                     f"LATITUDE : {latitude}",
                     f"LONGITUDE: {longitude}",
                     f"ELEVATION: {elevation}",
@@ -244,7 +252,8 @@ if uploaded_files:
                 if data_part is None:
                     continue
                     
-                st_name = str(info_part[0]).strip() if info_part[0] else f"UNKNOWN_SHEET_{sheet}"
+                raw_name = str(info_part[0]).strip() if info_part[0] else f"UNKNOWN_SHEET_{sheet}"
+                st_name = raw_name.replace(":", "").strip()
                 st_key = re.sub(r"\s+", " ", st_name).strip().upper()
                 
                 if st_key not in station_groups:
@@ -290,12 +299,14 @@ if uploaded_files:
         curr_st = station_groups[selected_st_key]
         excel_single, combined_df = generate_styled_excel(curr_st["name"], curr_st["info"], curr_st["data"])
         
+        clean_st_name = curr_st['name'].replace(":", "").strip()
+        
         col_dl, _ = st.columns([2, 5])
         with col_dl:
             st.download_button(
-                label=f"📥 Muat Turun Excel: {curr_st['name']}",
+                label="📥 Muat Turun Fail Excel",
                 data=excel_single,
-                file_name=f"{clean_filename(curr_st['name'])}.xlsx",
+                file_name=f"{clean_filename(clean_st_name)}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
             
