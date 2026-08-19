@@ -30,7 +30,7 @@ dan menyusun matriks jadual harian standard mengikut tahun dan stesen.
 """)
 
 # ============================================================
-# 3. FUNGSI-FUNGSI PEMPROSESAN
+# 3. FUNGSI-FUNGSI PEMPROSESAN DIPERTINGKATKAN
 # ============================================================
 months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
@@ -38,7 +38,7 @@ def find_header_row(raw):
     for i in range(len(raw)):
         row = [str(x).strip().lower() if pd.notna(x) else "" for x in raw.iloc[i].tolist()]
         text = " ".join(row)
-        if "year" in text and "month" in text and "day" in text and ("rainfall" in text or "mm" in text):
+        if ("year" in text or "tahun" in text) and ("month" in text or "bulan" in text) and ("day" in text or "hari" in text):
             return i
     return None
 
@@ -49,49 +49,80 @@ def clean_filename(name):
     name = name.strip(" .")
     return name if name != "" else "UNKNOWN_STATION"
 
-def get_station_info(raw):
+def extract_val_from_row(row_series, start_idx):
+    """Cari teks pertama yang valid di sebelah kanan (mengatasi isu merged cells)"""
+    for k in range(start_idx + 1, len(row_series)):
+        v = row_series.iloc[k]
+        if pd.notna(v) and str(v).strip() != "" and str(v).strip() != ":":
+            val = str(v).strip()
+            if val.startswith(":"):
+                val = val[1:].strip()
+            return val
+    return ""
+
+def get_station_info(raw, default_sheet_name=""):
     station, latitude, longitude, elevation = "", "", "", ""
-    for i in range(len(raw)):
-        for j in range(len(raw.columns)):
-            value = raw.iloc[i, j]
-            if pd.isna(value):
+    max_scan_rows = min(15, len(raw)) # Imbas 15 baris teratas sahaja
+    
+    for i in range(max_scan_rows):
+        row_series = raw.iloc[i]
+        for j in range(len(row_series)):
+            cell_val = row_series.iloc[j]
+            if pd.isna(cell_val):
                 continue
-            text = str(value).strip()
+            text = str(cell_val).strip()
+            t_lower = text.lower()
             
-            # STATION
-            if text.lower() == "station":
-                if j + 1 < len(raw.columns) and pd.notna(raw.iloc[i, j + 1]):
-                    station = str(raw.iloc[i, j + 1]).strip()
-            elif text.lower().startswith("station") and ":" in text:
-                station = text.split(":", 1)[1].strip()
-                
-            # LATITUDE
-            if text.lower() == "latitude":
-                if j + 1 < len(raw.columns) and pd.notna(raw.iloc[i, j + 1]):
-                    latitude = str(raw.iloc[i, j + 1]).strip()
-            elif text.lower().startswith("latitude") and ":" in text:
-                latitude = text.split(":", 1)[1].strip()
-                
-            # LONGITUDE
-            if text.lower() == "longitude":
-                if j + 1 < len(raw.columns) and pd.notna(raw.iloc[i, j + 1]):
-                    longitude = str(raw.iloc[i, j + 1]).strip()
-            elif text.lower().startswith("longitude") and ":" in text:
-                longitude = text.split(":", 1)[1].strip()
-                
-            # ELEVATION
-            if text.lower() == "elevation":
-                if j + 1 < len(raw.columns) and pd.notna(raw.iloc[i, j + 1]):
-                    elevation = str(raw.iloc[i, j + 1]).strip()
-            elif text.lower().startswith("elevation") and ":" in text:
-                elevation = text.split(":", 1)[1].strip()
-                
-    # Bersihkan tanda ':' pada data stesen
+            # --- STATION / STESEN ---
+            if not station:
+                if any(kw in t_lower for kw in ["station name", "nama stesen", "station", "stesen", "stn"]):
+                    if ":" in text and not t_lower.endswith(":"):
+                        parts = text.split(":", 1)
+                        if len(parts) > 1 and parts[1].strip():
+                            station = parts[1].strip()
+                    if not station:
+                        station = extract_val_from_row(row_series, j)
+            
+            # --- LATITUDE ---
+            if not latitude:
+                if "lat" in t_lower:
+                    if ":" in text and not t_lower.endswith(":"):
+                        parts = text.split(":", 1)
+                        if len(parts) > 1 and parts[1].strip():
+                            latitude = parts[1].strip()
+                    if not latitude:
+                        latitude = extract_val_from_row(row_series, j)
+                        
+            # --- LONGITUDE ---
+            if not longitude:
+                if "long" in t_lower or "lon" in t_lower:
+                    if ":" in text and not t_lower.endswith(":"):
+                        parts = text.split(":", 1)
+                        if len(parts) > 1 and parts[1].strip():
+                            longitude = parts[1].strip()
+                    if not longitude:
+                        longitude = extract_val_from_row(row_series, j)
+                        
+            # --- ELEVATION ---
+            if not elevation:
+                if "elev" in t_lower or "alt" in t_lower:
+                    if ":" in text and not t_lower.endswith(":"):
+                        parts = text.split(":", 1)
+                        if len(parts) > 1 and parts[1].strip():
+                            elevation = parts[1].strip()
+                    if not elevation:
+                        elevation = extract_val_from_row(row_series, j)
+
+    # Bersihkan aksara titik bertindih
     station = station.replace(":", "").strip()
     latitude = latitude.replace(":", "").strip()
     longitude = longitude.replace(":", "").strip()
     elevation = elevation.replace(":", "").strip()
     
+    # Jika masih gagal kesan, gunakan nama tab sheet
+    if not station:
+        station = str(default_sheet_name).strip()
+        
     return station, latitude, longitude, elevation
 
 def read_station_sheet(excel_file, sheet):
@@ -100,7 +131,7 @@ def read_station_sheet(excel_file, sheet):
     if header_row is None:
         return None, None
     
-    info = get_station_info(raw)
+    info = get_station_info(raw, default_sheet_name=sheet)
     data = raw.iloc[header_row + 1:].copy().iloc[:, :4]
     data.columns = ["Year", "Month", "Day", "Rainfall"]
     
@@ -246,13 +277,14 @@ if uploaded_files:
         try:
             excel = pd.ExcelFile(input_file)
             for sheet in excel.sheet_names:
-                if sheet.lower() == 'datalist':
+                # Abaikan tab yang bukan stesen cerapan
+                if str(sheet).lower().strip() in ['datalist', 'summary', 'senarai', 'sheet1', 'info']:
                     continue
                 data_part, info_part = read_station_sheet(excel, sheet)
                 if data_part is None:
                     continue
                     
-                raw_name = str(info_part[0]).strip() if info_part[0] else f"UNKNOWN_SHEET_{sheet}"
+                raw_name = str(info_part[0]).strip() if (info_part and info_part[0]) else str(sheet).strip()
                 st_name = raw_name.replace(":", "").strip()
                 st_key = re.sub(r"\s+", " ", st_name).strip().upper()
                 
@@ -267,7 +299,7 @@ if uploaded_files:
     progress_bar.empty()
     
     if station_groups:
-        st.success(f"✅ Selesai! Sebanyak **{len(station_groups)} stesen** berjaya diekstrak.")
+        st.success(f"✅ Selesai! Sebanyak **{len(station_groups)} stesen** berjaya dikesan & diekstrak.")
         
         # Butang Muat Turun Pukal (.ZIP)
         zip_buffer = io.BytesIO()
