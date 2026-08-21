@@ -25,8 +25,7 @@ st.caption("Jabatan Meteorologi Malaysia (MetMalaysia) | Pejabat Meteorologi Sab
 st.divider()
 
 st.markdown("""
-Modul ini mengekstrak siri masa hujan daripada fail mentah stesen AAWS, membersihkan rekod tidak sah, 
-dan menyusun matriks jadual harian standard mengikut tahun dan stesen.
+Modul ini mengekstrak siri masa hujan daripada fail mentah stesen AAWS dan menukarkannya kepada format borang Jabatan Meteorologi Malaysia. Ia menyokong pemprosesan berbilang fail dan tab stesen, serta membolehkan muat turun data secara pukal dalam format ZIP atau mengikut stesen.
 """)
 
 # ============================================================
